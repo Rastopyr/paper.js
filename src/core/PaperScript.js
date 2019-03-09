@@ -14,14 +14,16 @@
  * @name PaperScript
  * @namespace
  */
-Base.exports.PaperScript = function() {
+Base.exports.PaperScript = function () {
     // `this` == global scope, as the function is called with `.call(this);`
     var global = this,
         // See if there is a global Acorn in the browser already.
         acorn = global.acorn;
     // Also try importing an outside version of Acorn.
     if (!acorn && typeof require !== 'undefined') {
-        try { acorn = require('acorn'); } catch(e) {}
+        try {
+            acorn = require('acorn');
+        } catch (e) {}
     }
     // If no Acorn was found, load the bundled version.
     if (!acorn) {
@@ -29,7 +31,10 @@ Base.exports.PaperScript = function() {
         // assigned to it and ends up in the local acorn object.
         var exports, module;
         acorn = exports = module = {};
-/*#*/ include('../../node_modules/acorn/acorn.js', { exports: false });
+        /*#*/
+        include('../../node_modules/acorn/acorn.js', {
+            exports: false
+        });
         // Clear object again if it wasn't loaded here; for load.js, see below.
         if (!acorn.version)
             acorn = null;
@@ -64,14 +69,13 @@ Base.exports.PaperScript = function() {
     // Inject underscored math methods as aliases to Point, Size and Color.
     var fields = Base.each(
         ['add', 'subtract', 'multiply', 'divide', 'modulo', 'equals', 'negate'],
-        function(name) {
+        function (name) {
             // Create an alias for each math method to be injected into the
             // classes using Straps.js' #inject()
             this['__' + name] = '#' + name;
-        },
-        {
+        }, {
             // Needed for '+' unary operator:
-            __self: function() {
+            __self: function () {
                 return this;
             }
         }
@@ -92,13 +96,20 @@ Base.exports.PaperScript = function() {
             return operator === '!=' ? !res : res;
         }
         switch (operator) {
-        case '+': return left + right;
-        case '-': return left - right;
-        case '*': return left * right;
-        case '/': return left / right;
-        case '%': return left % right;
-        case '==': return left == right;
-        case '!=': return left != right;
+            case '+':
+                return left + right;
+            case '-':
+                return left - right;
+            case '*':
+                return left * right;
+            case '/':
+                return left / right;
+            case '%':
+                return left % right;
+            case '==':
+                return left == right;
+            case '!=':
+                return left != right;
         }
     }
 
@@ -108,8 +119,10 @@ Base.exports.PaperScript = function() {
         if (value && value[handler])
             return value[handler]();
         switch (operator) {
-        case '+': return +value;
-        case '-': return -value;
+            case '+':
+                return +value;
+            case '-':
+                return -value;
         }
     }
 
@@ -162,13 +175,13 @@ Base.exports.PaperScript = function() {
         // Returns the node's code as a string, taking insertions into account.
         function getCode(node) {
             return code.substring(getOffset(node.range[0]),
-                    getOffset(node.range[1]));
+                getOffset(node.range[1]));
         }
 
         // Returns the code between two nodes, e.g. an operator and white-space.
         function getBetween(left, right) {
             return code.substring(getOffset(left.range[1]),
-                    getOffset(right.range[0]));
+                getOffset(right.range[0]));
         }
 
         // Replaces the node's code with a new version and keeps insertions
@@ -209,115 +222,118 @@ Base.exports.PaperScript = function() {
                 }
             }
             switch (node.type) {
-            case 'UnaryExpression': // -a
-                if (node.operator in unaryOperators
-                        && node.argument.type !== 'Literal') {
-                    var arg = getCode(node.argument);
-                    replaceCode(node, '$__("' + node.operator + '", '
-                            + arg + ')');
-                }
-                break;
-            case 'BinaryExpression': // a + b, a - b, a / b, a * b, a == b, ...
-                if (node.operator in binaryOperators
-                        && node.left.type !== 'Literal') {
-                    var left = getCode(node.left),
-                        right = getCode(node.right),
-                        between = getBetween(node.left, node.right),
-                        operator = node.operator;
-                    replaceCode(node, '__$__(' + left + ','
+                case 'UnaryExpression': // -a
+                    if (node.operator in unaryOperators &&
+                        node.argument.type !== 'Literal') {
+                        var arg = getCode(node.argument);
+                        replaceCode(node, '$__("' + node.operator + '", ' +
+                            arg + ')');
+                    }
+                    break;
+                case 'BinaryExpression': // a + b, a - b, a / b, a * b, a == b, ...
+                    if (node.operator in binaryOperators &&
+                        node.left.type !== 'Literal') {
+                        var left = getCode(node.left),
+                            right = getCode(node.right),
+                            between = getBetween(node.left, node.right),
+                            operator = node.operator;
+                        replaceCode(node, '__$__(' + left + ','
                             // To preserve line-breaks, get the code in between
                             // left & right, and replace the occurrence of the
                             // operator with its string counterpart:
-                            + between.replace(new RegExp('\\' + operator),
-                                '"' + operator + '"')
-                            + ', ' + right + ')');
-                }
-                break;
-            case 'UpdateExpression': // a++, a--, ++a, --a
-            case 'AssignmentExpression': /// a += b, a -= b
-                var parentType = parent && parent.type;
-                if (!(
-                        // Filter out for statements to allow loop increments
-                        // to perform well
-                        parentType === 'ForStatement'
-                        // We need to filter out parents that are comparison
-                        // operators, e.g. for situations like `if (++i < 1)`,
-                        // as we can't replace that with
-                        // `if (__$__(i, "+", 1) < 1)`
-                        // Match any operator beginning with =, !, < and >.
-                        || parentType === 'BinaryExpression'
-                            && /^[=!<>]/.test(parent.operator)
-                        // array[i++] is a MemberExpression with computed = true
-                        // We can't replace that with array[__$__(i, "+", 1)].
-                        || parentType === 'MemberExpression' && parent.computed
-                )) {
-                    if (node.type === 'UpdateExpression') {
-                        var arg = getCode(node.argument),
-                            exp = '__$__(' + arg + ', "' + node.operator[0]
-                                    + '", 1)',
-                            str = arg + ' = ' + exp;
-                        // If this is not a prefixed update expression
-                        // (++a, --a), assign the old value before updating it.
-                        if (!node.prefix
-                                && (parentType === 'AssignmentExpression'
-                                    || parentType === 'VariableDeclarator')) {
-                            // Handle special issue #691 where the old value is
-                            // assigned to itself, and the expression is just
-                            // executed after, e.g.: `var x = ***; x = x++;`
-                            if (getCode(parent.left || parent.id) === arg)
-                                str = exp;
-                            str = arg + '; ' + str;
+                            +
+                            between.replace(new RegExp('\\' + operator),
+                                '"' + operator + '"') +
+                            ', ' + right + ')');
+                    }
+                    break;
+                case 'UpdateExpression': // a++, a--, ++a, --a
+                case 'AssignmentExpression': /// a += b, a -= b
+                    var parentType = parent && parent.type;
+                    if (!(
+                            // Filter out for statements to allow loop increments
+                            // to perform well
+                            parentType === 'ForStatement'
+                            // We need to filter out parents that are comparison
+                            // operators, e.g. for situations like `if (++i < 1)`,
+                            // as we can't replace that with
+                            // `if (__$__(i, "+", 1) < 1)`
+                            // Match any operator beginning with =, !, < and >.
+                            ||
+                            parentType === 'BinaryExpression' &&
+                            /^[=!<>]/.test(parent.operator)
+                            // array[i++] is a MemberExpression with computed = true
+                            // We can't replace that with array[__$__(i, "+", 1)].
+                            ||
+                            parentType === 'MemberExpression' && parent.computed
+                        )) {
+                        if (node.type === 'UpdateExpression') {
+                            var arg = getCode(node.argument),
+                                exp = '__$__(' + arg + ', "' + node.operator[0] +
+                                '", 1)',
+                                str = arg + ' = ' + exp;
+                            // If this is not a prefixed update expression
+                            // (++a, --a), assign the old value before updating it.
+                            if (!node.prefix &&
+                                (parentType === 'AssignmentExpression' ||
+                                    parentType === 'VariableDeclarator')) {
+                                // Handle special issue #691 where the old value is
+                                // assigned to itself, and the expression is just
+                                // executed after, e.g.: `var x = ***; x = x++;`
+                                if (getCode(parent.left || parent.id) === arg)
+                                    str = exp;
+                                str = arg + '; ' + str;
+                            }
+                            replaceCode(node, str);
+                        } else { // AssignmentExpression
+                            if (/^.=$/.test(node.operator) &&
+                                node.left.type !== 'Literal') {
+                                var left = getCode(node.left),
+                                    right = getCode(node.right),
+                                    exp = left + ' = __$__(' + left + ', "' +
+                                    node.operator[0] + '", ' + right + ')';
+                                // If the original expression is wrapped in
+                                // parenthesis, do the same with the replacement:
+                                replaceCode(node, /^\(.*\)$/.test(getCode(node)) ?
+                                    '(' + exp + ')' : exp);
+                            }
                         }
-                        replaceCode(node, str);
-                    } else { // AssignmentExpression
-                        if (/^.=$/.test(node.operator)
-                                && node.left.type !== 'Literal') {
-                            var left = getCode(node.left),
-                                right = getCode(node.right),
-                                exp = left + ' = __$__(' + left + ', "'
-                                    + node.operator[0] + '", ' + right + ')';
-                            // If the original expression is wrapped in
-                            // parenthesis, do the same with the replacement:
-                            replaceCode(node, /^\(.*\)$/.test(getCode(node))
-                                    ? '(' + exp + ')' : exp);
+                    }
+                    break;
+                case 'ExportDefaultDeclaration':
+                    // Convert `export default` to `module.exports = ` statements:
+                    replaceCode({
+                        range: [node.start, node.declaration.start]
+                    }, 'module.exports = ');
+                    break;
+                case 'ExportNamedDeclaration':
+                    // Convert named exports to `module.exports.NAME = NAME;`
+                    // statements both for new declarations and existing specifiers:
+                    var declaration = node.declaration;
+                    var specifiers = node.specifiers;
+                    if (declaration) {
+                        var declarations = declaration.declarations;
+                        if (declarations) {
+                            declarations.forEach(function (dec) {
+                                replaceCode(dec, 'module.exports.' + getCode(dec));
+                            });
+                            replaceCode({
+                                range: [
+                                    node.start,
+                                    declaration.start + declaration.kind.length
+                                ]
+                            }, '');
+                        }
+                    } else if (specifiers) {
+                        var exports = specifiers.map(function (specifier) {
+                            var name = getCode(specifier);
+                            return 'module.exports.' + name + ' = ' + name + '; ';
+                        }).join('');
+                        if (exports) {
+                            replaceCode(node, exports);
                         }
                     }
-                }
-                break;
-            case 'ExportDefaultDeclaration':
-                // Convert `export default` to `module.exports = ` statements:
-                replaceCode({
-                    range: [node.start, node.declaration.start]
-                }, 'module.exports = ');
-                break;
-            case 'ExportNamedDeclaration':
-                // Convert named exports to `module.exports.NAME = NAME;`
-                // statements both for new declarations and existing specifiers:
-                var declaration = node.declaration;
-                var specifiers = node.specifiers;
-                if (declaration) {
-                    var declarations = declaration.declarations;
-                    if (declarations) {
-                        declarations.forEach(function(dec) {
-                            replaceCode(dec, 'module.exports.' + getCode(dec));
-                        });
-                        replaceCode({
-                            range: [
-                                node.start,
-                                declaration.start + declaration.kind.length
-                            ]
-                        }, '');
-                    }
-                } else if (specifiers) {
-                    var exports = specifiers.map(function(specifier) {
-                        var name = getCode(specifier);
-                        return 'module.exports.' + name + ' = ' + name + '; ';
-                    }).join('');
-                    if (exports) {
-                        replaceCode(node, exports);
-                    }
-                }
-                break;
+                    break;
             }
         }
 
@@ -351,10 +367,11 @@ Base.exports.PaperScript = function() {
             map;
         // TODO: Verify these browser versions for source map support, and check
         // other browsers.
-        if (sourceMaps && (agent.chrome && version >= 30
-                || agent.webkit && version >= 537.76 // >= Safari 7.0.4
-                || agent.firefox && version >= 23
-                || agent.node)) {
+        if (sourceMaps && (agent.chrome && version >= 30 ||
+                agent.webkit && version >= 537.76 // >= Safari 7.0.4
+                ||
+                agent.firefox && version >= 23 ||
+                agent.node)) {
             if (agent.node) {
                 // -2 required to remove function header:
                 // https://code.google.com/p/chromium/issues/detail?id=331655
@@ -366,26 +383,26 @@ Base.exports.PaperScript = function() {
                 // Count the amount of line breaks in the html before this code
                 // to determine the offset.
                 offset = html.substr(0, html.indexOf(code) + 1).match(
-                        lineBreaks).length + 1;
+                    lineBreaks).length + 1;
             }
             // A hack required by older versions of browsers to align inlined
             // code: Instead of starting the mappings at the given offset, we
             // have to shift the actual code down to the place in the original
             // file, as source-map support seems incomplete in these browsers.
             offsetCode = offset > 0 && !(
-                    agent.chrome && version >= 36 ||
-                    agent.safari && version >= 600 ||
-                    agent.firefox && version >= 40 ||
-                    agent.node);
+                agent.chrome && version >= 36 ||
+                agent.safari && version >= 600 ||
+                agent.firefox && version >= 40 ||
+                agent.node);
             var mappings = ['AA' + encodeVLQ(offsetCode ? 0 : offset) + 'A'];
             // Create empty entries by the amount of lines + 1, so join can be
             // used below to produce the actual instructions that many times.
-            mappings.length = (code.match(lineBreaks) || []).length + 1
-                    + (offsetCode ? offset : 0);
+            mappings.length = (code.match(lineBreaks) || []).length + 1 +
+                (offsetCode ? offset : 0);
             map = {
                 version: 3,
                 file: url,
-                names:[],
+                names: [],
                 // Since PaperScript doesn't actually change the offsets between
                 // the lines of the original code, all that is required is a
                 // mappings string that increments by one between each line.
@@ -410,11 +427,11 @@ Base.exports.PaperScript = function() {
                 code = new Array(offset + 1).join('\n') + code;
             }
             if (/^(inline|both)$/.test(sourceMaps)) {
-                code += "\n//# sourceMappingURL=data:application/json;base64,"
-                        + self.btoa(unescape(encodeURIComponent(
-                            JSON.stringify(map))));
+                code += "\n\/\/# sourceMappingURL=data:application/json;base64," +
+                    self.btoa(unescape(encodeURIComponent(
+                        JSON.stringify(map))));
             }
-            code += "\n//# sourceURL=" + (url || 'paperscript');
+            code += "\n\/\/# sourceURL=" + (url || 'paperscript');
         }
         return {
             url: url,
@@ -452,8 +469,8 @@ Base.exports.PaperScript = function() {
             // resembling a global tool handler is contained in the code, but
             // no tool objects are actually created.
             tool = /\btool\.\w+|\s+on(?:Key|Mouse)(?:Up|Down|Move|Drag)\b/
-                    .test(code) && !/\bnew\s+Tool\b/.test(code)
-                        ? new Tool() : null,
+            .test(code) && !/\bnew\s+Tool\b/.test(code) ?
+            new Tool() : null,
             toolHandlers = tool ? tool._events : [],
             // Compile a list of all handlers that can be defined globally
             // inside the PaperScript. These are passed on to the function as
@@ -470,6 +487,7 @@ Base.exports.PaperScript = function() {
             func,
             compiled = typeof code === 'object' ? code : compile(code, options);
         code = compiled.code;
+
         function expose(scope, hidden) {
             // Look through all enumerable properties on the scope and expose
             // these too as pseudo-globals, but only if they seem to be in use.
@@ -477,15 +495,21 @@ Base.exports.PaperScript = function() {
                 // Next to \b well also need to match \s and \W in the beginning
                 // of $__, since $ is not part of \w. And that causes \b to not
                 // match ^ longer, so include that specifically too.
-                if ((hidden || !/^_/.test(key)) && new RegExp('([\\b\\s\\W]|^)'
-                        + key.replace(/\$/g, '\\$') + '\\b').test(code)) {
+                if ((hidden || !/^_/.test(key)) && new RegExp('([\\b\\s\\W]|^)' +
+                        key.replace(/\$/g, '\\$') + '\\b').test(code)) {
                     params.push(key);
                     args.push(scope[key]);
                 }
             }
         }
-        expose({ __$__: __$__, $__: $__, paper: scope, view: view, tool: tool },
-                true);
+        expose({
+                __$__: __$__,
+                $__: $__,
+                paper: scope,
+                view: view,
+                tool: tool
+            },
+            true);
         expose(scope);
         // Add a fake `module.exports` object so PaperScripts can export things.
         code = 'var module = { exports: {} }; ' + code;
@@ -493,7 +517,7 @@ Base.exports.PaperScript = function() {
         // the string describing the properties for the returned exports object
         // at the end of the code execution, so we can retrieve their values
         // from the function call.
-        var exports = Base.each(handlers, function(key) {
+        var exports = Base.each(handlers, function (key) {
             // Check for each handler explicitly and only export them if they
             // seem to exist.
             if (new RegExp('\\s+' + key + '\\b').test(code)) {
@@ -508,8 +532,8 @@ Base.exports.PaperScript = function() {
         // End by returning `module.exports` at the end of the generated code:
         code += '\nreturn module.exports;';
         var agent = paper.agent;
-        if (document && (agent.chrome
-                || agent.firefox && agent.versionNumber < 40)) {
+        if (document && (agent.chrome ||
+                agent.firefox && agent.versionNumber < 40)) {
             // On older Firefox, all error numbers inside dynamically compiled
             // code are relative to the line where the eval / compilation
             // happened. To fix this issue, we're temporarily inserting a new
@@ -524,7 +548,7 @@ Base.exports.PaperScript = function() {
                 code = '\n' + code;
             script.appendChild(document.createTextNode(
                 'document.__paperscript__ = function(' + params + ') {' +
-                    code +
+                code +
                 '\n}'
             ));
             head.appendChild(script);
@@ -537,7 +561,7 @@ Base.exports.PaperScript = function() {
         var exports = func && func.apply(scope, args);
         var obj = exports || {};
         // Now install the 'global' tool and view handlers, and we're done!
-        Base.each(toolHandlers, function(key) {
+        Base.each(toolHandlers, function (key) {
             var value = obj[key];
             if (value)
                 tool[key] = value;
@@ -564,8 +588,8 @@ Base.exports.PaperScript = function() {
     function loadScript(script) {
         // Only load this script if it not loaded already.
         // Support both text/paperscript and text/x-paperscript:
-        if (/^text\/(?:x-|)paperscript$/.test(script.type)
-                && PaperScope.getAttribute(script, 'ignore') !== 'true') {
+        if (/^text\/(?:x-|)paperscript$/.test(script.type) &&
+            PaperScope.getAttribute(script, 'ignore') !== 'true') {
             // Produce a new PaperScope for this script now. Scopes are cheap so
             // let's not worry about the initial one that was already created.
             // Define an id for each PaperScript, so its scope can be retrieved
@@ -580,14 +604,14 @@ Base.exports.PaperScript = function() {
                 // in PaperScope.getAttribute() and use it here too:
                 src = script.src || script.getAttribute('data-src'),
                 async = PaperScope.hasAttribute(script, 'async'),
-                scopeAttribute = 'data-paper-scope';
+                    scopeAttribute = 'data-paper-scope';
             if (!canvas)
-                throw new Error('Unable to find canvas with id "'
-                        + canvasId + '"');
+                throw new Error('Unable to find canvas with id "' +
+                    canvasId + '"');
             // See if there already is a scope for this canvas and reuse it, to
             // support multiple scripts per canvas. Otherwise create a new one.
-            var scope = PaperScope.get(canvas.getAttribute(scopeAttribute))
-                        || new PaperScope().setup(canvas);
+            var scope = PaperScope.get(canvas.getAttribute(scopeAttribute)) ||
+                new PaperScope().setup(canvas);
             // Link the element to this scope, so we can reuse the scope when
             // compiling multiple scripts for the same element.
             canvas.setAttribute(scopeAttribute, scope._id);
@@ -602,7 +626,7 @@ Base.exports.PaperScript = function() {
                     url: src,
                     async: async,
                     mimeType: 'text/plain',
-                    onLoad: function(code) {
+                    onLoad: function (code) {
                         execute(code, scope, src);
                     }
                 });
@@ -618,10 +642,10 @@ Base.exports.PaperScript = function() {
 
     function loadAll() {
         Base.each(document && document.getElementsByTagName('script'),
-                loadScript);
+            loadScript);
     }
 
-   /**
+    /**
      * Loads, compiles and executes PaperScript code in the HTML document. Note
      * that this method is executed automatically for all scripts in the
      * document through a window load event. You can optionally call it earlier
@@ -649,7 +673,9 @@ Base.exports.PaperScript = function() {
             // Handle it asynchronously
             setTimeout(loadAll);
         } else {
-            DomEvent.add(window, { load: loadAll });
+            DomEvent.add(window, {
+                load: loadAll
+            });
         }
     }
 
@@ -661,6 +687,6 @@ Base.exports.PaperScript = function() {
         calculateBinary: __$__,
         calculateUnary: $__
     };
-// Pass on `this` as the binding object, so we can reference Acorn both in
-// development and in the built library.
+    // Pass on `this` as the binding object, so we can reference Acorn both in
+    // development and in the built library.
 }.call(this);
